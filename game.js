@@ -273,19 +273,29 @@ function drawBackground() {
 
 function drawDistantWoods() {
   for (let layer = 0; layer < 4; layer += 1) {
-    ctx.fillStyle = [`#304d35`, "#28432f", "#213929", "#1a3023"][layer];
-    const baseY = 250 + layer * 28;
-    ctx.beginPath();
-    ctx.moveTo(0, H);
-    ctx.lineTo(0, baseY);
-    for (let x = -60; x <= W + 80; x += 54) {
-      const h = 92 + Math.sin(x * 0.03 + layer) * 28 + layer * 22;
-      ctx.lineTo(x + 24, baseY - h);
-      ctx.lineTo(x + 58, baseY);
+    const trunkColor = [`rgba(39, 57, 39, 0.46)`, "rgba(31, 49, 34, 0.56)", "rgba(23, 39, 28, 0.7)", "rgba(17, 31, 23, 0.82)"][layer];
+    const leafColor = [`rgba(50, 82, 52, 0.48)`, "rgba(42, 72, 45, 0.6)", "rgba(31, 58, 39, 0.72)", "rgba(22, 45, 32, 0.86)"][layer];
+    const baseY = 255 + layer * 36;
+    const gap = 58 - layer * 6;
+
+    ctx.fillStyle = trunkColor;
+    for (let x = -60; x <= W + 80; x += gap) {
+      const noise = Math.sin(x * 0.027 + layer * 4);
+      const trunkW = 8 + layer * 4 + Math.abs(noise) * 5;
+      const topY = 88 + layer * 26 + noise * 34;
+      ctx.fillRect(x + noise * 14, topY, trunkW, H - topY);
+      ctx.fillRect(x + 19 - noise * 10, topY + 32, Math.max(4, trunkW * 0.45), H - topY);
     }
-    ctx.lineTo(W, H);
-    ctx.closePath();
-    ctx.fill();
+
+    ctx.fillStyle = leafColor;
+    for (let x = -90; x <= W + 110; x += 46) {
+      const y = baseY - 115 + Math.sin(x * 0.018 + layer) * 38;
+      const r = 64 + layer * 18 + Math.sin(x * 0.04) * 14;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r * 1.4, r * 0.7, Math.sin(x) * 0.35, 0, Math.PI * 2);
+      ctx.ellipse(x + 34, y + 18, r * 1.05, r * 0.58, Math.cos(x) * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -326,6 +336,21 @@ function drawForestFloor() {
     ctx.beginPath();
     ctx.ellipse(x, y + 10, 22 * s, 7 * s, Math.sin(i) * 0.7, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  for (let i = 0; i < 44; i += 1) {
+    const depth = (i * 0.041 + state.time * 0.0028 * state.speed) % 1;
+    const y = trailY(depth);
+    const half = trailHalfWidth(y);
+    const side = i % 2 ? -1 : 1;
+    const x = trailCenter(y) + side * (half + 6 + Math.sin(i * 3.1) * 62 * depth);
+    const s = 0.2 + depth * 1.4;
+    ctx.strokeStyle = i % 2 ? "rgba(24, 43, 22, 0.62)" : "rgba(75, 61, 35, 0.5)";
+    ctx.lineWidth = 2 + s * 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 8 * s);
+    ctx.quadraticCurveTo(x + side * 20 * s, y - 14 * s, x + side * 42 * s, y + 4 * s);
+    ctx.stroke();
   }
 }
 
@@ -390,17 +415,16 @@ function drawTrailTexture() {
     }
   }
 
-  for (const lane of [-0.27, 0.27]) {
-    ctx.strokeStyle = "rgba(30, 20, 12, 0.2)";
-    ctx.lineWidth = 14;
+  for (let i = 0; i < 38; i += 1) {
+    const depth = (i * 0.037 + state.time * 0.0065 * state.speed) % 1;
+    const y = trailY(depth);
+    const half = trailHalfWidth(y);
+    const x = trailCenter(y) + Math.sin(i * 2.43) * half * 0.72;
+    const s = 0.18 + depth * 1.5;
+    ctx.fillStyle = i % 3 ? `rgba(64, 38, 20, ${0.14 + depth * 0.16})` : `rgba(118, 78, 35, ${0.12 + depth * 0.18})`;
     ctx.beginPath();
-    for (let y = trailTop + 10; y <= trailBottom; y += 16) {
-      const half = trailHalfWidth(y);
-      const x = trailCenter(y) + lane * half;
-      if (y === trailTop + 10) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
+    ctx.ellipse(x, y, 28 * s, 7 * s, Math.sin(i) * 0.8, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
