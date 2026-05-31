@@ -12,10 +12,9 @@ const restartButton = document.getElementById("restartButton");
 
 const W = canvas.width;
 const H = canvas.height;
-const horizon = 218;
-const roadTop = 260;
-const roadBottom = 720;
-const lanes = [-0.62, 0, 0.62];
+const trailTop = 245;
+const trailBottom = 720;
+const lanes = [-0.58, 0, 0.58];
 
 const keys = new Set();
 const pointer = { active: false, x: 0 };
@@ -39,10 +38,32 @@ const state = {
   obstacles: [],
   collectibles: [],
   dust: [],
-  leaves: [],
+  flecks: [],
 };
 
 bestEl.textContent = state.best;
+
+const treeRows = Array.from({ length: 54 }, (_, i) => ({
+  seed: i * 19.37,
+  side: i % 2 ? 1 : -1,
+  offset: 0.04 + ((i * 0.137) % 1),
+  lean: Math.sin(i * 2.1) * 0.18,
+  bulk: 0.7 + ((i * 0.41) % 1) * 0.75,
+}));
+
+const groundMarks = Array.from({ length: 84 }, (_, i) => ({
+  seed: i * 12.91,
+  x: Math.sin(i * 5.2),
+  d: (i * 0.031) % 1,
+  kind: i % 4,
+}));
+
+const canopyLeaves = Array.from({ length: 160 }, (_, i) => ({
+  x: (Math.sin(i * 78.23) * 0.5 + 0.5) * W,
+  y: (Math.sin(i * 31.71) * 0.5 + 0.5) * 210,
+  r: 18 + ((i * 13) % 38),
+  tone: i % 5,
+}));
 
 function resetGame() {
   state.running = true;
@@ -57,11 +78,12 @@ function resetGame() {
   state.jump = 0;
   state.jumpVelocity = 0;
   state.invincible = 0;
-  state.spawnTimer = 18;
-  state.starTimer = 54;
+  state.spawnTimer = 26;
+  state.starTimer = 64;
   state.obstacles = [];
   state.collectibles = [];
   state.dust = [];
+  state.flecks = [];
   menu.classList.add("hidden");
   gameOver.classList.add("hidden");
   updateHud();
@@ -73,35 +95,47 @@ function updateHud() {
   bestEl.textContent = state.best;
 }
 
-function roadCenter(y) {
-  const t = (y - roadTop) / (roadBottom - roadTop);
-  return W / 2 + Math.sin(state.time * 0.012 + t * 1.7) * 64 * t;
+function curveAt(depth) {
+  return Math.sin(state.time * 0.009 + depth * 2.1) * 86 * depth + Math.sin(state.time * 0.004 + depth * 5.8) * 22 * depth;
 }
 
-function roadHalfWidth(y) {
-  const t = Math.max(0, Math.min(1, (y - roadTop) / (roadBottom - roadTop)));
-  return 80 + t * t * 500;
+function trailY(depth) {
+  const eased = Math.pow(Math.max(0, depth), 1.36);
+  return trailTop + eased * (trailBottom - trailTop);
+}
+
+function trailCenter(y) {
+  const depth = Math.max(0, Math.min(1, (y - trailTop) / (trailBottom - trailTop)));
+  return W / 2 + curveAt(depth);
+}
+
+function trailHalfWidth(y) {
+  const depth = Math.max(0, Math.min(1, (y - trailTop) / (trailBottom - trailTop)));
+  const base = 32 + Math.pow(depth, 1.85) * 385;
+  const ragged = Math.sin(depth * 28 + state.time * 0.02) * 10 * depth;
+  return base + ragged;
 }
 
 function laneToScreen(lane, depth) {
-  const y = roadTop + depth * (roadBottom - roadTop);
-  const half = roadHalfWidth(y);
+  const y = trailY(depth);
+  const half = trailHalfWidth(y);
   return {
-    x: roadCenter(y) + lane * half * 0.5,
+    x: trailCenter(y) + lane * half * 0.7,
     y,
-    scale: 0.18 + depth * 1.25,
+    scale: 0.12 + depth * 1.28,
   };
 }
 
 function spawnObstacle() {
   const lane = lanes[Math.floor(Math.random() * lanes.length)];
-  const type = Math.random() > 0.48 ? "log" : "stone";
-  state.obstacles.push({ lane, depth: -0.08, type, wobble: Math.random() * 6.28 });
+  const roll = Math.random();
+  const type = roll > 0.66 ? "stump" : roll > 0.34 ? "branch" : "stone";
+  state.obstacles.push({ lane, depth: -0.08, type, wobble: Math.random() * Math.PI * 2 });
 }
 
 function spawnStar() {
   const lane = lanes[Math.floor(Math.random() * lanes.length)];
-  state.collectibles.push({ lane, depth: -0.06, spin: Math.random() * 6.28 });
+  state.collectibles.push({ lane, depth: -0.06, spin: Math.random() * Math.PI * 2 });
 }
 
 function endGame() {
@@ -115,27 +149,25 @@ function endGame() {
 }
 
 function updatePlayerInput() {
-  if (keys.has("ArrowLeft") || keys.has("a")) state.targetX -= 0.045;
-  if (keys.has("ArrowRight") || keys.has("d")) state.targetX += 0.045;
+  if (keys.has("ArrowLeft") || keys.has("a")) state.targetX -= 0.042;
+  if (keys.has("ArrowRight") || keys.has("d")) state.targetX += 0.042;
   if (pointer.active) {
     const normalized = (pointer.x / canvas.getBoundingClientRect().width) * 2 - 1;
-    state.targetX += (normalized - state.targetX) * 0.065;
+    state.targetX += (normalized - state.targetX) * 0.06;
   }
-  state.targetX = Math.max(-0.95, Math.min(0.95, state.targetX));
-  state.playerX += (state.targetX - state.playerX) * 0.15;
+  state.targetX = Math.max(-0.94, Math.min(0.94, state.targetX));
+  state.playerX += (state.targetX - state.playerX) * 0.14;
 }
 
 function tryJump() {
-  if (state.running && state.jump <= 0.01) {
-    state.jumpVelocity = 0.34;
-  }
+  if (state.running && state.jump <= 0.01) state.jumpVelocity = 0.34;
 }
 
 function updateWorld() {
   if (!state.running) return;
 
   state.time += 1;
-  state.speed = Math.min(2.35, state.speed + 0.00085);
+  state.speed = Math.min(2.45, state.speed + 0.0009);
   state.score += state.speed * 0.42;
   state.invincible = Math.max(0, state.invincible - 1);
 
@@ -152,187 +184,387 @@ function updateWorld() {
   state.starTimer -= state.speed;
   if (state.spawnTimer <= 0) {
     spawnObstacle();
-    state.spawnTimer = Math.max(34, 88 - state.speed * 16) + Math.random() * 42;
+    state.spawnTimer = Math.max(33, 86 - state.speed * 15) + Math.random() * 38;
   }
   if (state.starTimer <= 0) {
     spawnStar();
-    state.starTimer = 46 + Math.random() * 70;
+    state.starTimer = 52 + Math.random() * 72;
   }
 
-  for (const obstacle of state.obstacles) obstacle.depth += 0.0068 * state.speed * (1 + obstacle.depth * 1.35);
+  for (const obstacle of state.obstacles) obstacle.depth += 0.0065 * state.speed * (1 + obstacle.depth * 1.36);
   for (const star of state.collectibles) {
-    star.depth += 0.0074 * state.speed * (1 + star.depth * 1.28);
-    star.spin += 0.14;
+    star.depth += 0.0072 * state.speed * (1 + star.depth * 1.28);
+    star.spin += 0.13;
   }
 
-  state.obstacles = state.obstacles.filter((obstacle) => obstacle.depth < 1.18);
+  state.obstacles = state.obstacles.filter((obstacle) => obstacle.depth < 1.17);
   state.collectibles = state.collectibles.filter((star) => star.depth < 1.15 && !star.hit);
 
-  const playerLane = state.playerX;
   for (const obstacle of state.obstacles) {
-    if (obstacle.depth > 0.78 && obstacle.depth < 1.02 && Math.abs(obstacle.lane - playerLane) < 0.34) {
+    if (obstacle.depth > 0.78 && obstacle.depth < 1.03 && Math.abs(obstacle.lane - state.playerX) < 0.34) {
       if (state.jump < 0.32 && state.invincible <= 0) endGame();
     }
   }
   for (const star of state.collectibles) {
-    if (star.depth > 0.78 && star.depth < 1.06 && Math.abs(star.lane - playerLane) < 0.36) {
+    if (star.depth > 0.78 && star.depth < 1.06 && Math.abs(star.lane - state.playerX) < 0.36) {
       star.hit = true;
       state.stars += 1;
       state.score += 25;
     }
   }
 
-  if (Math.random() < 0.7) {
+  if (Math.random() < 0.75) {
+    const y = 634 + Math.random() * 42;
     state.dust.push({
-      x: W / 2 + state.playerX * 210 + (Math.random() - 0.5) * 70,
-      y: 630 + Math.random() * 34,
-      r: 7 + Math.random() * 13,
-      life: 28,
+      x: trailCenter(y) + state.playerX * 218 + (Math.random() - 0.5) * 76,
+      y,
+      r: 7 + Math.random() * 15,
+      life: 30,
+      tone: Math.random(),
     });
   }
-  state.dust.forEach((p) => {
-    p.y += 1.6;
-    p.r *= 1.02;
+
+  if (Math.random() < 0.35) {
+    state.flecks.push({
+      x: Math.random() * W,
+      y: -18,
+      vx: -0.4 + Math.random() * 0.8,
+      vy: 1.2 + Math.random() * 2.3,
+      life: 140,
+      r: 2 + Math.random() * 4,
+    });
+  }
+
+  for (const p of state.dust) {
+    p.y += 1.4;
+    p.r *= 1.025;
     p.life -= 1;
-  });
+  }
+  for (const fleck of state.flecks) {
+    fleck.x += fleck.vx + Math.sin((state.time + fleck.y) * 0.03) * 0.55;
+    fleck.y += fleck.vy;
+    fleck.life -= 1;
+  }
   state.dust = state.dust.filter((p) => p.life > 0);
+  state.flecks = state.flecks.filter((p) => p.life > 0 && p.y < H + 30);
 
   updateHud();
 }
 
-function drawSky() {
-  const gradient = ctx.createLinearGradient(0, 0, 0, H);
-  gradient.addColorStop(0, "#9fb9ad");
-  gradient.addColorStop(0.32, "#d2d2b3");
-  gradient.addColorStop(0.58, "#3c5a3e");
-  gradient.addColorStop(1, "#182019");
-  ctx.fillStyle = gradient;
+function drawBackground() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#b8c6b2");
+  sky.addColorStop(0.28, "#8ca080");
+  sky.addColorStop(0.55, "#3a5138");
+  sky.addColorStop(1, "#172014");
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = "rgba(255, 233, 154, 0.72)";
-  ctx.beginPath();
-  ctx.arc(972, 116, 50, 0, Math.PI * 2);
-  ctx.fill();
+  const glow = ctx.createRadialGradient(860, 120, 8, 860, 120, 410);
+  glow.addColorStop(0, "rgba(255, 231, 168, 0.75)");
+  glow.addColorStop(0.2, "rgba(236, 213, 143, 0.32)");
+  glow.addColorStop(1, "rgba(236, 213, 143, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = "rgba(32, 67, 43, 0.95)";
-  for (let i = 0; i < 10; i += 1) {
-    const x = i * 150 - 40;
-    ctx.beginPath();
-    ctx.moveTo(x, 260);
-    ctx.lineTo(x + 90, 120 + Math.sin(i) * 22);
-    ctx.lineTo(x + 185, 260);
-    ctx.closePath();
-    ctx.fill();
-  }
+  drawDistantWoods();
+  drawCanopy();
 }
 
-function drawTrees() {
-  for (let side = -1; side <= 1; side += 2) {
-    for (let i = 0; i < 18; i += 1) {
-      const depth = ((i * 0.075 + (state.time * 0.0024 * state.speed)) % 1);
-      const y = roadTop + depth * (roadBottom - roadTop);
-      const half = roadHalfWidth(y);
-      const center = roadCenter(y);
-      const x = center + side * (half + 40 + depth * 360 + Math.sin(i * 8) * 25);
-      const scale = 0.22 + depth * 1.55;
-      drawTree(x, y + 18, scale, i);
+function drawDistantWoods() {
+  for (let layer = 0; layer < 4; layer += 1) {
+    ctx.fillStyle = [`#304d35`, "#28432f", "#213929", "#1a3023"][layer];
+    const baseY = 250 + layer * 28;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.lineTo(0, baseY);
+    for (let x = -60; x <= W + 80; x += 54) {
+      const h = 92 + Math.sin(x * 0.03 + layer) * 28 + layer * 22;
+      ctx.lineTo(x + 24, baseY - h);
+      ctx.lineTo(x + 58, baseY);
     }
-  }
-}
-
-function drawTree(x, y, scale, seed) {
-  const trunkW = 18 * scale;
-  const trunkH = 120 * scale;
-  ctx.fillStyle = "#362516";
-  ctx.fillRect(x - trunkW / 2, y - trunkH, trunkW, trunkH);
-  ctx.fillStyle = seed % 2 ? "#174b2e" : "#1d5b34";
-  for (let i = 0; i < 3; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(x, y - trunkH - (100 - i * 24) * scale);
-    ctx.lineTo(x - (72 - i * 12) * scale, y - trunkH + (2 + i * 28) * scale);
-    ctx.lineTo(x + (72 - i * 12) * scale, y - trunkH + (2 + i * 28) * scale);
+    ctx.lineTo(W, H);
     ctx.closePath();
     ctx.fill();
   }
-  ctx.fillStyle = "rgba(255, 244, 182, 0.1)";
-  ctx.fillRect(x - trunkW * 0.18, y - trunkH, trunkW * 0.2, trunkH);
 }
 
-function drawRoad() {
+function drawCanopy() {
+  for (const leaf of canopyLeaves) {
+    const sway = Math.sin(state.time * 0.01 + leaf.x * 0.02) * 8;
+    const colors = ["#173a24", "#1d4a2b", "#244f2e", "#2f5d35", "#0f2c1d"];
+    ctx.fillStyle = colors[leaf.tone];
+    ctx.beginPath();
+    ctx.ellipse(leaf.x + sway, leaf.y, leaf.r * 1.35, leaf.r * 0.62, Math.sin(leaf.x) * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const shade = ctx.createLinearGradient(0, 0, 0, 220);
+  shade.addColorStop(0, "rgba(3, 13, 8, 0.7)");
+  shade.addColorStop(1, "rgba(3, 13, 8, 0)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, W, 230);
+}
+
+function drawForestFloor() {
+  const floor = ctx.createLinearGradient(0, trailTop - 20, 0, H);
+  floor.addColorStop(0, "#30422b");
+  floor.addColorStop(0.55, "#243221");
+  floor.addColorStop(1, "#171e13");
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, trailTop - 28, W, H - trailTop + 28);
+
+  for (let i = 0; i < 60; i += 1) {
+    const depth = (i * 0.023 + state.time * 0.002 * state.speed) % 1;
+    const y = trailY(depth);
+    const half = trailHalfWidth(y);
+    const center = trailCenter(y);
+    const side = i % 2 ? -1 : 1;
+    const x = center + side * (half + 16 + depth * 360 + Math.sin(i * 4.7) * 90);
+    const s = 0.25 + depth * 1.5;
+    ctx.fillStyle = i % 3 ? "rgba(54, 66, 35, 0.55)" : "rgba(83, 67, 35, 0.45)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 10, 22 * s, 7 * s, Math.sin(i) * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawTrail() {
+  const left = [];
+  const right = [];
+  for (let y = trailTop; y <= trailBottom + 12; y += 12) {
+    const depth = (y - trailTop) / (trailBottom - trailTop);
+    const center = trailCenter(y);
+    const half = trailHalfWidth(y);
+    const edgeWave = Math.sin(depth * 34 + state.time * 0.025) * 12 * depth;
+    left.push([center - half + edgeWave, y]);
+    right.push([center + half + Math.cos(depth * 29 + state.time * 0.021) * 13 * depth, y]);
+  }
+
   ctx.beginPath();
-  ctx.moveTo(roadCenter(roadTop) - roadHalfWidth(roadTop), roadTop);
-  for (let y = roadTop; y <= roadBottom; y += 16) ctx.lineTo(roadCenter(y) - roadHalfWidth(y), y);
-  ctx.lineTo(roadCenter(roadBottom) + roadHalfWidth(roadBottom), roadBottom);
-  for (let y = roadBottom; y >= roadTop; y -= 16) ctx.lineTo(roadCenter(y) + roadHalfWidth(y), y);
+  ctx.moveTo(left[0][0], left[0][1]);
+  for (const p of left) ctx.lineTo(p[0], p[1]);
+  for (let i = right.length - 1; i >= 0; i -= 1) ctx.lineTo(right[i][0], right[i][1]);
   ctx.closePath();
 
-  const road = ctx.createLinearGradient(0, roadTop, 0, roadBottom);
-  road.addColorStop(0, "#5f604f");
-  road.addColorStop(1, "#2f2a21");
-  ctx.fillStyle = road;
+  const dirt = ctx.createLinearGradient(0, trailTop, 0, H);
+  dirt.addColorStop(0, "#5c503d");
+  dirt.addColorStop(0.35, "#6a563b");
+  dirt.addColorStop(1, "#352519");
+  ctx.fillStyle = dirt;
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(246, 222, 158, 0.42)";
-  ctx.lineWidth = 5;
-  ctx.setLineDash([28, 28]);
-  ctx.lineDashOffset = -state.time * state.speed * 4;
-  for (const lane of [-0.31, 0.31]) {
+  ctx.save();
+  ctx.clip();
+  drawTrailTexture();
+  ctx.restore();
+
+  drawTrailEdges(left, right);
+}
+
+function drawTrailTexture() {
+  for (const mark of groundMarks) {
+    const depth = (mark.d + state.time * 0.006 * state.speed) % 1;
+    const y = trailY(depth);
+    const half = trailHalfWidth(y);
+    const x = trailCenter(y) + mark.x * half * 0.82 + Math.sin(mark.seed) * 22 * depth;
+    const s = 0.22 + depth * 1.6;
+
+    if (mark.kind === 0) {
+      ctx.strokeStyle = `rgba(28, 19, 12, ${0.16 + depth * 0.18})`;
+      ctx.lineWidth = 2 + s * 4;
+      ctx.beginPath();
+      ctx.moveTo(x - 26 * s, y);
+      ctx.quadraticCurveTo(x, y + 10 * s, x + 32 * s, y + 4 * s);
+      ctx.stroke();
+    } else if (mark.kind === 1) {
+      ctx.fillStyle = `rgba(116, 91, 46, ${0.25 + depth * 0.22})`;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 16 * s, 5 * s, Math.sin(mark.seed), 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = `rgba(32, 25, 16, ${0.18 + depth * 0.18})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 3 + s * 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  for (const lane of [-0.27, 0.27]) {
+    ctx.strokeStyle = "rgba(30, 20, 12, 0.2)";
+    ctx.lineWidth = 14;
     ctx.beginPath();
-    for (let y = roadTop; y <= roadBottom; y += 18) {
-      const x = roadCenter(y) + lane * roadHalfWidth(y);
-      if (y === roadTop) ctx.moveTo(x, y);
+    for (let y = trailTop + 10; y <= trailBottom; y += 16) {
+      const half = trailHalfWidth(y);
+      const x = trailCenter(y) + lane * half;
+      if (y === trailTop + 10) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
   }
-  ctx.setLineDash([]);
+}
 
-  ctx.fillStyle = "rgba(35, 25, 17, 0.26)";
-  for (let i = 0; i < 26; i += 1) {
-    const depth = (i * 0.047 + state.time * 0.004 * state.speed) % 1;
-    const y = roadTop + depth * (roadBottom - roadTop);
-    const half = roadHalfWidth(y);
+function drawTrailEdges(left, right) {
+  ctx.strokeStyle = "rgba(19, 28, 14, 0.82)";
+  ctx.lineWidth = 18;
+  ctx.lineCap = "round";
+  for (const edge of [left, right]) {
     ctx.beginPath();
-    ctx.ellipse(roadCenter(y) + Math.sin(i * 11) * half * 0.6, y, 14 + depth * 34, 2 + depth * 6, 0, 0, Math.PI * 2);
+    edge.forEach(([x, y], i) => {
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(130, 105, 52, 0.24)";
+  for (const edge of [left, right]) {
+    ctx.beginPath();
+    edge.forEach(([x, y], i) => {
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+  ctx.lineCap = "butt";
+}
+
+function drawTrees() {
+  const rows = treeRows
+    .map((tree) => ({ ...tree, depth: (tree.offset + state.time * 0.0027 * state.speed) % 1 }))
+    .sort((a, b) => a.depth - b.depth);
+
+  for (const tree of rows) {
+    const y = trailY(tree.depth);
+    const half = trailHalfWidth(y);
+    const x = trailCenter(y) + tree.side * (half + 40 + tree.depth * 420 + Math.sin(tree.seed) * 38);
+    const scale = (0.28 + tree.depth * 1.85) * tree.bulk;
+    drawTree(x, y + 52 * tree.depth, scale, tree);
+  }
+}
+
+function drawTree(x, y, scale, tree) {
+  const trunkH = 225 * scale;
+  const trunkW = 22 * scale;
+  const lean = tree.lean * scale * 45;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.transform(1, 0, lean / trunkH, 1, 0, 0);
+
+  const trunk = ctx.createLinearGradient(-trunkW, -trunkH, trunkW, 0);
+  trunk.addColorStop(0, "#2a1a10");
+  trunk.addColorStop(0.48, "#5b3921");
+  trunk.addColorStop(1, "#1e130c");
+  ctx.fillStyle = trunk;
+  ctx.fillRect(-trunkW / 2, -trunkH, trunkW, trunkH);
+
+  ctx.strokeStyle = "rgba(18, 10, 6, 0.55)";
+  ctx.lineWidth = Math.max(1, 2.5 * scale);
+  for (let i = 0; i < 5; i += 1) {
+    const bx = -trunkW * 0.3 + i * trunkW * 0.17;
+    ctx.beginPath();
+    ctx.moveTo(bx, -trunkH);
+    ctx.bezierCurveTo(bx + Math.sin(i) * 10 * scale, -trunkH * 0.65, bx - 7 * scale, -trunkH * 0.3, bx + 4 * scale, 0);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < 4; i += 1) {
+    const branchY = -trunkH * (0.42 + i * 0.13);
+    const side = i % 2 ? 1 : -1;
+    ctx.strokeStyle = "#2b1a0f";
+    ctx.lineWidth = 8 * scale * (1 - i * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(0, branchY);
+    ctx.quadraticCurveTo(side * 42 * scale, branchY - 24 * scale, side * 92 * scale, branchY - 42 * scale);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  const foliageY = y - trunkH * 0.72;
+  const tones = ["rgba(19, 62, 35, 0.94)", "rgba(29, 82, 43, 0.9)", "rgba(12, 45, 28, 0.95)"];
+  for (let i = 0; i < 5; i += 1) {
+    ctx.fillStyle = tones[(i + Math.floor(tree.seed)) % tones.length];
+    ctx.beginPath();
+    ctx.ellipse(
+      x + Math.sin(tree.seed + i) * 48 * scale,
+      foliageY - i * 24 * scale,
+      96 * scale * (1 - i * 0.06),
+      44 * scale,
+      Math.sin(tree.seed + i) * 0.5,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 }
 
 function drawObstacle(obstacle) {
-  const pos = laneToScreen(obstacle.lane, obstacle.depth);
   if (obstacle.depth < 0) return;
+  const pos = laneToScreen(obstacle.lane, obstacle.depth);
   ctx.save();
   ctx.translate(pos.x, pos.y);
   ctx.scale(pos.scale, pos.scale);
-  if (obstacle.type === "log") {
-    ctx.rotate(Math.sin(obstacle.wobble) * 0.1);
-    ctx.fillStyle = "#5a371d";
-    ctx.fillRect(-54, -22, 108, 38);
-    ctx.fillStyle = "#8c6039";
+  ctx.rotate(Math.sin(obstacle.wobble + state.time * 0.02) * 0.05);
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+  ctx.beginPath();
+  ctx.ellipse(0, 20, 62, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (obstacle.type === "branch") {
+    ctx.strokeStyle = "#4e2f19";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 22;
     ctx.beginPath();
-    ctx.ellipse(-54, -3, 16, 20, 0, 0, Math.PI * 2);
-    ctx.ellipse(54, -3, 16, 20, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(37, 21, 12, 0.55)";
+    ctx.moveTo(-62, -4);
+    ctx.quadraticCurveTo(-14, -28, 62, 10);
+    ctx.stroke();
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(-8, -18);
+    ctx.lineTo(36, -58);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(120, 82, 45, 0.55)";
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(-54, -3, 10, 0, Math.PI * 2);
+    ctx.moveTo(-58, -10);
+    ctx.quadraticCurveTo(-12, -25, 57, 4);
+    ctx.stroke();
+  } else if (obstacle.type === "stump") {
+    const bark = ctx.createLinearGradient(-38, -60, 38, 24);
+    bark.addColorStop(0, "#2c1a0e");
+    bark.addColorStop(0.5, "#6b4324");
+    bark.addColorStop(1, "#24150c");
+    ctx.fillStyle = bark;
+    ctx.fillRect(-34, -62, 68, 74);
+    ctx.fillStyle = "#9a7042";
+    ctx.beginPath();
+    ctx.ellipse(0, -62, 36, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(44, 25, 13, 0.65)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(0, -62, 22, 8, 0, 0, Math.PI * 2);
     ctx.stroke();
   } else {
-    ctx.fillStyle = "#595c55";
+    ctx.fillStyle = "#464b42";
     ctx.beginPath();
-    ctx.moveTo(-48, 12);
-    ctx.lineTo(-28, -28);
-    ctx.lineTo(20, -34);
-    ctx.lineTo(54, 4);
-    ctx.lineTo(25, 26);
+    ctx.moveTo(-44, 14);
+    ctx.lineTo(-26, -30);
+    ctx.lineTo(22, -39);
+    ctx.lineTo(58, -4);
+    ctx.lineTo(32, 28);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+    ctx.fillStyle = "rgba(222, 226, 205, 0.16)";
     ctx.beginPath();
-    ctx.ellipse(-8, -15, 26, 8, -0.32, 0, Math.PI * 2);
+    ctx.ellipse(-8, -18, 25, 8, -0.35, 0, Math.PI * 2);
     ctx.fill();
   }
+
   ctx.restore();
 }
 
@@ -340,13 +572,23 @@ function drawStar(star) {
   if (star.depth < 0) return;
   const pos = laneToScreen(star.lane, star.depth);
   ctx.save();
-  ctx.translate(pos.x, pos.y - 38 * pos.scale);
+  ctx.translate(pos.x, pos.y - 42 * pos.scale);
   ctx.rotate(star.spin);
   ctx.scale(pos.scale, pos.scale);
+
+  const shine = ctx.createRadialGradient(0, 0, 5, 0, 0, 58);
+  shine.addColorStop(0, "rgba(255, 251, 177, 1)");
+  shine.addColorStop(0.48, "rgba(255, 207, 82, 0.85)");
+  shine.addColorStop(1, "rgba(255, 207, 82, 0)");
+  ctx.fillStyle = shine;
+  ctx.beginPath();
+  ctx.arc(0, 0, 58, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.fillStyle = "#ffe27a";
   ctx.beginPath();
   for (let i = 0; i < 10; i += 1) {
-    const r = i % 2 ? 18 : 40;
+    const r = i % 2 ? 16 : 36;
     const a = -Math.PI / 2 + i * Math.PI / 5;
     ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
   }
@@ -356,96 +598,142 @@ function drawStar(star) {
 }
 
 function drawBike() {
-  const baseX = W / 2 + state.playerX * 230;
-  const baseY = 616 - state.jump * 190;
+  const groundY = 622;
+  const baseX = trailCenter(groundY) + state.playerX * 230;
+  const baseY = groundY - state.jump * 190;
   const tilt = (state.targetX - state.playerX) * 0.45;
 
   ctx.save();
   ctx.translate(baseX, baseY);
   ctx.rotate(tilt);
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
   ctx.beginPath();
-  ctx.ellipse(0, 82 + state.jump * 190, 92 - state.jump * 34, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 83 + state.jump * 190, 92 - state.jump * 35, 16, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = "#171514";
   for (const wheelX of [-54, 58]) {
+    const tire = ctx.createRadialGradient(wheelX, 38, 8, wheelX, 38, 34);
+    tire.addColorStop(0, "#5a5a55");
+    tire.addColorStop(0.48, "#222");
+    tire.addColorStop(1, "#050505");
+    ctx.fillStyle = tire;
     ctx.beginPath();
-    ctx.arc(wheelX, 38, 31, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = "#434340";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(wheelX, 38, 18, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = "#171514";
-    ctx.lineWidth = 8;
+    ctx.arc(wheelX, 38, 33, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#77776f";
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 8; i += 1) {
+      const a = i * Math.PI / 4 + state.time * 0.08;
+      ctx.beginPath();
+      ctx.moveTo(wheelX, 38);
+      ctx.lineTo(wheelX + Math.cos(a) * 24, 38 + Math.sin(a) * 24);
+      ctx.stroke();
+    }
   }
 
-  ctx.strokeStyle = "#e2382f";
-  ctx.lineWidth = 9;
+  ctx.strokeStyle = "#b82018";
+  ctx.lineWidth = 10;
+  ctx.lineJoin = "round";
   ctx.beginPath();
   ctx.moveTo(-54, 35);
-  ctx.lineTo(-8, -8);
+  ctx.lineTo(-8, -9);
   ctx.lineTo(55, 36);
   ctx.lineTo(12, 36);
   ctx.lineTo(-54, 35);
   ctx.stroke();
 
-  ctx.fillStyle = "#cf2b24";
+  const body = ctx.createLinearGradient(-34, -40, 58, 2);
+  body.addColorStop(0, "#7e1510");
+  body.addColorStop(0.45, "#e23a2d");
+  body.addColorStop(1, "#68100c");
+  ctx.fillStyle = body;
   ctx.beginPath();
-  ctx.roundRect(-24, -34, 70, 34, 8);
+  ctx.roundRect(-27, -37, 76, 36, 8);
   ctx.fill();
-  ctx.fillStyle = "#f2c15a";
-  ctx.fillRect(24, -28, 28, 14);
+  ctx.fillStyle = "rgba(255, 224, 110, 0.9)";
+  ctx.fillRect(24, -30, 28, 13);
 
-  ctx.strokeStyle = "#151515";
+  ctx.strokeStyle = "#111";
   ctx.lineWidth = 7;
   ctx.beginPath();
-  ctx.moveTo(38, -28);
+  ctx.moveTo(38, -29);
   ctx.lineTo(82, -62);
   ctx.stroke();
 
-  ctx.fillStyle = "#2a6ac8";
+  ctx.fillStyle = "#1c5bb3";
   ctx.beginPath();
-  ctx.ellipse(-4, -76, 24, 36, -0.1, 0, Math.PI * 2);
+  ctx.ellipse(-4, -77, 24, 37, -0.1, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#f4c69a";
+  ctx.fillStyle = "#efbf91";
   ctx.beginPath();
-  ctx.arc(10, -118, 18, 0, Math.PI * 2);
+  ctx.arc(10, -119, 18, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#e23a2d";
+  ctx.fillStyle = "#c62621";
   ctx.beginPath();
-  ctx.arc(10, -122, 24, Math.PI, 0);
+  ctx.arc(10, -123, 24, Math.PI, 0);
   ctx.lineTo(34, -122);
-  ctx.quadraticCurveTo(20, -96, -8, -101);
+  ctx.quadraticCurveTo(19, -96, -10, -101);
   ctx.closePath();
   ctx.fill();
 
   ctx.restore();
 }
 
-function drawDust() {
+function drawDustAndLeaves() {
   for (const p of state.dust) {
-    ctx.fillStyle = `rgba(188, 151, 96, ${p.life / 80})`;
+    const color = p.tone > 0.45 ? "154, 119, 71" : "87, 68, 41";
+    ctx.fillStyle = `rgba(${color}, ${p.life / 78})`;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  for (const fleck of state.flecks) {
+    ctx.fillStyle = `rgba(176, 125, 46, ${Math.min(0.5, fleck.life / 160)})`;
+    ctx.beginPath();
+    ctx.ellipse(fleck.x, fleck.y, fleck.r * 1.8, fleck.r, Math.sin(fleck.y) * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawAtmosphere() {
+  const mist = ctx.createLinearGradient(0, 160, 0, 520);
+  mist.addColorStop(0, "rgba(221, 230, 206, 0.22)");
+  mist.addColorStop(0.45, "rgba(221, 230, 206, 0.08)");
+  mist.addColorStop(1, "rgba(221, 230, 206, 0)");
+  ctx.fillStyle = mist;
+  ctx.fillRect(0, 140, W, 400);
+
+  ctx.strokeStyle = "rgba(255, 230, 154, 0.08)";
+  ctx.lineWidth = 28;
+  for (let i = 0; i < 5; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(760 + i * 78, 42);
+    ctx.lineTo(450 + i * 44 + Math.sin(state.time * 0.01 + i) * 20, H);
+    ctx.stroke();
+  }
+
+  const vignette = ctx.createRadialGradient(W / 2, H * 0.52, 190, W / 2, H * 0.52, 760);
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(0.72, "rgba(0, 0, 0, 0.1)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.5)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function render() {
-  drawSky();
-  drawTrees();
-  drawRoad();
-  drawDust();
+  drawBackground();
+  drawForestFloor();
+  drawTrail();
 
   const sceneItems = [
     ...state.obstacles.map((item) => ({ type: "obstacle", item })),
     ...state.collectibles.map((item) => ({ type: "star", item })),
   ].sort((a, b) => a.item.depth - b.item.depth);
+
+  drawTrees();
+  drawDustAndLeaves();
 
   for (const entry of sceneItems) {
     if (entry.type === "obstacle") drawObstacle(entry.item);
@@ -453,9 +741,7 @@ function render() {
   }
 
   drawBike();
-
-  ctx.fillStyle = "rgba(12, 18, 13, 0.16)";
-  ctx.fillRect(0, 0, W, H);
+  drawAtmosphere();
 }
 
 function frame() {
