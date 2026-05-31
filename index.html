@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Moto na Floresta</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="game-shell" aria-label="Jogo Moto na Floresta">
+      <section class="hud" aria-label="Pontuacao e estado">
+        <div>
+          <span class="label">Pontos</span>
+          <strong id="score">0</strong>
+        </div>
+        <div>
+          <span class="label">Estrelas</span>
+          <strong id="stars">0</strong>
+        </div>
+        <div>
+          <span class="label">Recorde</span>
+          <strong id="best">0</strong>
+        </div>
+      </section>
+
+      <canvas id="game" width="1280" height="720" aria-label="Pista de moto na floresta"></canvas>
+
+      <section id="menu" class="overlay">
+        <div class="panel">
+          <p class="kicker">Aventura na floresta</p>
+          <h1>Moto na Floresta</h1>
+          <p class="summary">Desvia dos troncos, apanha estrelas e conduz pela estrada da floresta.</p>
+          <button id="startButton" type="button">Comecar</button>
+          <p class="controls">Setas ou A/D para virar. Espaco para saltar.</p>
+        </div>
+      </section>
+
+      <section id="gameOver" class="overlay hidden">
+        <div class="panel">
+          <p class="kicker">Boa corrida</p>
+          <h2>Fim da pista</h2>
+          <p id="finalScore" class="summary">Fizeste 0 pontos.</p>
+          <button id="restartButton" type="button">Jogar outra vez</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
