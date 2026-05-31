@@ -15,6 +15,8 @@ const H = canvas.height;
 const trailTop = 245;
 const trailBottom = 720;
 const lanes = [-0.58, 0, 0.58];
+const backgroundImage = new Image();
+backgroundImage.src = "assets/forest-trail-realistic.png";
 
 const keys = new Set();
 const pointer = { active: false, x: 0 };
@@ -42,6 +44,10 @@ const state = {
 };
 
 bestEl.textContent = state.best;
+
+function hasPhotoBackground() {
+  return backgroundImage.complete && backgroundImage.naturalWidth > 0;
+}
 
 const treeRows = Array.from({ length: 54 }, (_, i) => ({
   seed: i * 19.37,
@@ -252,6 +258,22 @@ function updateWorld() {
 }
 
 function drawBackground() {
+  if (hasPhotoBackground()) {
+    const drift = Math.sin(state.time * 0.004) * 10;
+    const zoom = 1.045;
+    const drawW = W * zoom;
+    const drawH = H * zoom;
+    ctx.drawImage(backgroundImage, (W - drawW) / 2 + drift, (H - drawH) / 2, drawW, drawH);
+
+    const focus = ctx.createRadialGradient(W / 2, H * 0.62, 110, W / 2, H * 0.62, 680);
+    focus.addColorStop(0, "rgba(0, 0, 0, 0)");
+    focus.addColorStop(0.72, "rgba(0, 0, 0, 0.06)");
+    focus.addColorStop(1, "rgba(0, 0, 0, 0.36)");
+    ctx.fillStyle = focus;
+    ctx.fillRect(0, 0, W, H);
+    return;
+  }
+
   const sky = ctx.createLinearGradient(0, 0, 0, H);
   sky.addColorStop(0, "#b8c6b2");
   sky.addColorStop(0.28, "#8ca080");
@@ -317,6 +339,22 @@ function drawCanopy() {
 }
 
 function drawForestFloor() {
+  if (hasPhotoBackground()) {
+    for (let i = 0; i < 54; i += 1) {
+      const depth = (i * 0.037 + state.time * 0.003 * state.speed) % 1;
+      const y = trailY(depth);
+      const half = trailHalfWidth(y);
+      const side = i % 2 ? -1 : 1;
+      const x = trailCenter(y) + side * (half + 18 + Math.sin(i * 2.9) * 90 * depth);
+      const s = 0.16 + depth * 1.6;
+      ctx.fillStyle = i % 2 ? "rgba(39, 68, 32, 0.28)" : "rgba(117, 83, 38, 0.24)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + 8 * s, 20 * s, 7 * s, Math.sin(i) * 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return;
+  }
+
   const floor = ctx.createLinearGradient(0, trailTop - 20, 0, H);
   floor.addColorStop(0, "#30422b");
   floor.addColorStop(0.55, "#243221");
@@ -373,9 +411,15 @@ function drawTrail() {
   ctx.closePath();
 
   const dirt = ctx.createLinearGradient(0, trailTop, 0, H);
-  dirt.addColorStop(0, "#5c503d");
-  dirt.addColorStop(0.35, "#6a563b");
-  dirt.addColorStop(1, "#352519");
+  if (hasPhotoBackground()) {
+    dirt.addColorStop(0, "rgba(92, 80, 61, 0.18)");
+    dirt.addColorStop(0.35, "rgba(106, 86, 59, 0.26)");
+    dirt.addColorStop(1, "rgba(53, 37, 25, 0.38)");
+  } else {
+    dirt.addColorStop(0, "#5c503d");
+    dirt.addColorStop(0.35, "#6a563b");
+    dirt.addColorStop(1, "#352519");
+  }
   ctx.fillStyle = dirt;
   ctx.fill();
 
@@ -429,8 +473,8 @@ function drawTrailTexture() {
 }
 
 function drawTrailEdges(left, right) {
-  ctx.strokeStyle = "rgba(19, 28, 14, 0.82)";
-  ctx.lineWidth = 18;
+  ctx.strokeStyle = hasPhotoBackground() ? "rgba(20, 28, 15, 0.38)" : "rgba(19, 28, 14, 0.82)";
+  ctx.lineWidth = hasPhotoBackground() ? 10 : 18;
   ctx.lineCap = "round";
   for (const edge of [left, right]) {
     ctx.beginPath();
@@ -441,8 +485,8 @@ function drawTrailEdges(left, right) {
     ctx.stroke();
   }
 
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = "rgba(130, 105, 52, 0.24)";
+  ctx.lineWidth = hasPhotoBackground() ? 3 : 5;
+  ctx.strokeStyle = hasPhotoBackground() ? "rgba(183, 149, 83, 0.14)" : "rgba(130, 105, 52, 0.24)";
   for (const edge of [left, right]) {
     ctx.beginPath();
     edge.forEach(([x, y], i) => {
@@ -756,7 +800,7 @@ function render() {
     ...state.collectibles.map((item) => ({ type: "star", item })),
   ].sort((a, b) => a.item.depth - b.item.depth);
 
-  drawTrees();
+  if (!hasPhotoBackground()) drawTrees();
   drawDustAndLeaves();
 
   for (const entry of sceneItems) {
